@@ -4,3 +4,7 @@ vendor/bundle/
 .ruby-gemset
 .idea/
 .vscode/
+resources/
+devnotes.md
+LEARNING.md
+GAME.md
