@@ -99,7 +99,7 @@ class Chapter
 
   def pages_for(source)
     path = File.join(@content_root, source)
-    File.read(path).split(/\n---\n/).map(&:rstrip)
+    File.read(path).split(/\n---\n/) #.map(&:rstrip)
   end
 end
 
@@ -173,23 +173,33 @@ end
 
 def prologue_loop
   chapter = Chapter.new("prologue/office.md")
+  has_first_input = false
 
   loop do
     $stdin.noecho { chapter.write_page } # Don't mirror keypresses while writing page
 
-    line = Reline.readline("> ", true)
+    prompt = has_first_input ? "> " : "(h=help, s=skip, e=exit, Enter to continue)> "
+    line = Reline.readline(prompt, true)
     break if line.nil?
 
     case line.chomp
-    when 'exit', 'quit'
+    when 'exit', 'e'
       raise SystemExit
+    when 'help', 'h'
+      puts "Commands:"
+      puts "  enter - continue"
+      puts "  skip - skip prologue completely"
+      puts "  exit - quit"
+      puts "  help - show commands"
     when 'skip', 's'
       break
-    when '', 'next'
-      break unless chapter.next_page!
     else
-      # NOOP
+      print "\e[1A\e[2K" # up 1 line, clear entire line
+      $stdout.flush
+      break unless chapter.next_page!
     end
+
+    has_first_input = true
   end
 
   true

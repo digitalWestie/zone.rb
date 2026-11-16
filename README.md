@@ -9,6 +9,14 @@ You don't need to know Ruby to play... and if you do, be careful... things aren'
 - Ruby 4.0.1 (via rvm; see `.ruby-version`)
 - Bundler
 
+## Content
+
+We can use fmt to word-aware wrap to 72 cols to help with formatting:
+
+```bash
+fmt -w 72 content/prologue/office.md
+```
+
 ## Setup
 
 ```bash
