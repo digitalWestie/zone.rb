@@ -1,10 +1,15 @@
 #!/usr/bin/env ruby
 # docs: https://github.com/ruby/reline/blob/master/doc/for_users.md
+require 'io/console'
 require 'reline'
 require 'prism'
 
-# DEBUG arg for enabling debug mode
-debug = ARGV.include?('--debug')
+DEBUG = ARGV.include?('--debug')
+ALLOWED_MESSAGES = %i[inspect class puts to_s reverse]
+GAME_STATE = {
+  prologue_completed: false,
+  crossing_completed: false,
+}
 
 # define a class that will be used as the context for evaluation
 class Area
@@ -29,9 +34,75 @@ class Area
   end
 end
 
-area = Area.new("Outer Dump")
 
-ALLOWED_MESSAGES = %i[inspect class puts to_s reverse]
+class Chapter
+  DEFAULT_CONTENT_ROOT = File.expand_path("content", __dir__)
+  TYPEWRITER_DELAY = 0.05
+
+  attr_reader :source, :pages, :current_page
+  attr_writer :current_page
+
+  def initialize(source, content_root = DEFAULT_CONTENT_ROOT)
+    @content_root = content_root
+    @source = source
+    @pages = pages_for(@source)
+    @current_page = 0
+    @skip_typewriting_effect = false
+  end
+
+  def skip_typewriting_effect!
+    @skip_typewriting_effect = true
+  end
+
+  def next_page!
+    @current_page += 1
+    @current_page < @pages.size
+  end
+
+  # Type out the current page. Any keypress prints the remainder immediately.
+  # The keypress/input is discarded so that it has no other effect than skipping
+  # the typewriting effect.
+  def write_page
+    @skip_typewriting_effect = false
+    text = @pages[current_page]
+    return unless text
+
+    i = 0
+    while i < text.length
+      print text[i]
+      $stdout.flush # Flush so each character appears immediately.
+      i += 1
+
+      if @skip_typewriting_effect || stdin_ready?(TYPEWRITER_DELAY)
+        @skip_typewriting_effect = true
+        drain_stdin # discard any keypress input
+        print text[i..] # print the remainder of the page immediately
+        break
+      end
+    end
+    puts
+  end
+
+  private
+
+  # True if the user typed something within +timeout+ seconds.
+  # IO.select watches file descriptors until timeout;
+  # returns early on input.
+  def stdin_ready?(timeout)
+    !!IO.select([$stdin], nil, nil, timeout)
+  end
+
+  def drain_stdin
+    loop { $stdin.read_nonblock(4096) }
+  rescue IO::WaitReadable, EOFError
+  end
+
+  def pages_for(source)
+    path = File.join(@content_root, source)
+    File.read(path).split(/\n---\n/).map(&:rstrip)
+  end
+end
+
 
 def visit(node)
   case node
@@ -48,7 +119,7 @@ def visit(node)
   when Prism::CallNode
     # Calling a method may be allowed, so we need to check what it is
     puts "Call node: #{node.name}, allowed: #{ALLOWED_MESSAGES.include?(node.name)}"
-  when Prism::XStringNode
+  when Prism::XStringNode || Prism::InterpolatedXStringNode
     # XString literals e.g. using system call backticks not allowed
     puts "XString node: #{node.inspect}, not allowed"
   else
@@ -66,8 +137,9 @@ begin
 rescue
 end
 
-# Main loop
-begin
+def repl_loop
+  area = Area.new("Outer Dump")
+
   Reline.completion_proc = proc { |word|
     %w{
       help
@@ -77,7 +149,7 @@ begin
   while line = Reline.readline("zone> ", true)
     case line.chomp
     when 'exit', 'quit'
-      break
+      raise SystemExit
     when ''
       # NOOP
     else
@@ -92,11 +164,44 @@ begin
           puts "--------------------------------"
         rescue StandardError => e
           puts "Error: #{e.message}"
-          puts e.backtrace.join("\n") if debug
+          puts e.backtrace.join("\n") if DEBUG
         end
       end
     end
   end
+end
+
+def prologue_loop
+  chapter = Chapter.new("prologue/office.md")
+
+  loop do
+    $stdin.noecho { chapter.write_page } # Don't mirror keypresses while writing page
+
+    line = Reline.readline("> ", true)
+    break if line.nil?
+
+    case line.chomp
+    when 'exit', 'quit'
+      raise SystemExit
+    when 'skip', 's'
+      break
+    when '', 'next'
+      break unless chapter.next_page!
+    else
+      # NOOP
+    end
+  end
+
+  true
+end
+
+
+# Main loop
+begin
+  prologue_loop unless GAME_STATE[:prologue_completed]
+  GAME_STATE[:prologue_completed] = true
+  #crossing_loop unless GAME_STATE[:crossing_completed]
+  repl_loop
 rescue Interrupt
   puts '^C'
   retry
