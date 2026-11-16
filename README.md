@@ -1,10 +1,8 @@
 # Zone
 
-A text-based narrative game that teaches Ruby by walking the Zone — inspired by
-Tarkovsky's *Stalker* / the Strugatskys' *Roadside Picnic*.
+An interactive fiction inspired by Tarkovsky's *Stalker* and the Strugatskys' *Roadside Picnic*. Unlike most IFs, you write (some) Ruby code to interact with the world.
 
-You type real Ruby into a constrained REPL. What you may say is gated by
-where you are (area) and what you have learned (progression).
+You don't need to know Ruby to play... and if you do, be careful... things aren't always what they seem in the Zone.
 
 ## Requirements
 
