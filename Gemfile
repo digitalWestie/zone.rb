@@ -5,6 +5,7 @@ source "https://rubygems.org"
 ruby "4.0.1"
 
 gem "reline"
+gem "lipgloss"
 
 group :test do
   gem "minitest", "~> 5.25"

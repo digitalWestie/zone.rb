@@ -1,7 +1,7 @@
 
 # Prologue
 
-## Dr. Varga's Office
+## DR VARGA'S OFFICE
 
 For months, you've imagined this meeting. The image disturbed your
 furious study of field notes and readings. But thankfully, you're here.

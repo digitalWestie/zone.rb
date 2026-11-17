@@ -3,13 +3,17 @@
 require 'io/console'
 require 'reline'
 require 'prism'
+require 'lipgloss'
 
 DEBUG = ARGV.include?('--debug')
 ALLOWED_MESSAGES = %i[inspect class puts to_s reverse]
 GAME_STATE = {
   prologue_completed: false,
-  crossing_completed: false,
+  vignette_completed: false,
 }
+DEFAULT = Lipgloss::Style.new.foreground("#EFEFEF")
+SPEAKER = Lipgloss::Style.new.bold(true).foreground("#CBC3E3")
+SPEAKER_LINE = /\G([A-Z][A-Z0-9' ]*)\n/
 
 # define a class that will be used as the context for evaluation
 class Area
@@ -37,7 +41,7 @@ end
 
 class Chapter
   DEFAULT_CONTENT_ROOT = File.expand_path("content", __dir__)
-  TYPEWRITER_DELAY = 0.05
+  TYPEWRITER_DELAY = 0.08
 
   attr_reader :source, :pages, :current_page
   attr_writer :current_page
@@ -59,6 +63,10 @@ class Chapter
     @current_page < @pages.size
   end
 
+  def completed?
+    @current_page >= @pages.size
+  end
+
   # Type out the current page. Any keypress prints the remainder immediately.
   # The keypress/input is discarded so that it has no other effect than skipping
   # the typewriting effect.
@@ -67,17 +75,24 @@ class Chapter
     text = @pages[current_page]
     return unless text
 
+    style = DEFAULT
     i = 0
     while i < text.length
-      print text[i]
-      $stdout.flush # Flush so each character appears immediately.
+      # At each line start, pick speaker style or fall back to default.
+      if i.zero? || text[i - 1] == "\n"
+        style = text.match(SPEAKER_LINE, i) ? SPEAKER : DEFAULT
+      end
+
+      char = text[i]
+      print(char == "\n" ? char : style.render(char))
+      $stdout.flush
       i += 1
 
-      if @skip_typewriting_effect || stdin_ready?(TYPEWRITER_DELAY)
+      next if @skip_typewriting_effect
+
+      if stdin_ready?(TYPEWRITER_DELAY)
         @skip_typewriting_effect = true
         drain_stdin # discard any keypress input
-        print text[i..] # print the remainder of the page immediately
-        break
       end
     end
     puts
@@ -172,7 +187,9 @@ def repl_loop
 end
 
 def prologue_loop
-  chapter = Chapter.new("prologue/office.md")
+  chapters = [Chapter.new("prologue/office.md"), Chapter.new("prologue/crossing.md")]
+  chapter = chapters.first
+
   has_first_input = false
 
   loop do
@@ -196,7 +213,15 @@ def prologue_loop
     else
       print "\e[1A\e[2K" # up 1 line, clear entire line
       $stdout.flush
-      break unless chapter.next_page!
+
+      # We want to do switch to the crossing when the office is completed
+      next_page_available = chapter.next_page!
+
+      unless next_page_available
+        chapters.shift
+        break if chapters.empty?
+        chapter = chapters.first
+      end
     end
 
     has_first_input = true
@@ -206,11 +231,21 @@ def prologue_loop
 end
 
 
+def vignette_loop
+  print "\e[2J\e[H" # clear and move to top left
+  vignette = Chapter.new("prologue/vignette.md")
+  $stdin.noecho { vignette.write_page }
+  print "\e[2J\e[H"
+  true
+end
+
 # Main loop
 begin
   prologue_loop unless GAME_STATE[:prologue_completed]
   GAME_STATE[:prologue_completed] = true
-  #crossing_loop unless GAME_STATE[:crossing_completed]
+  vignette_loop unless GAME_STATE[:vignette_completed]
+  GAME_STATE[:vignette_completed] = true
+
   repl_loop
 rescue Interrupt
   puts '^C'

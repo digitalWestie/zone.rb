@@ -1,0 +1,15 @@
+title: PROLOGUE
+
+beats:
+  - id: office
+    heading: VARGA'S OFFICE
+    source: office.md
+  - id: crossing
+    heading: THE CROSSING
+    source: crossing.md
+  - id: into_zone
+    source: vignette.md
+    mode: vignette
+    delay_ms: 1600
+  - id: dump
+    handoff: outer_dump
