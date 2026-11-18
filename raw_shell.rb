@@ -11,9 +11,6 @@ GAME_STATE = {
   prologue_completed: false,
   vignette_completed: false,
 }
-DEFAULT = Lipgloss::Style.new.foreground("#EFEFEF")
-SPEAKER = Lipgloss::Style.new.bold(true).foreground("#CBC3E3")
-SPEAKER_LINE = /\G([A-Z][A-Z0-9' ]*)\n/
 
 # define a class that will be used as the context for evaluation
 class Area
@@ -42,6 +39,11 @@ end
 class Chapter
   DEFAULT_CONTENT_ROOT = File.expand_path("content", __dir__)
   TYPEWRITER_DELAY = 0.08
+  DEFAULT_STYLE = Lipgloss::Style.new.foreground("#EFEFEF")
+  SPEAKER_STYLE = Lipgloss::Style.new.bold(true).foreground("#CBC3E3")
+  CODE_STYLE = Lipgloss::Style.new.foreground("#A0FFA0") # a light green
+  SPEAKER_LINE = /\G([A-Z][A-Z0-9' ]*)\n/
+  INLINE_CODE = /\G(?<!`)`([^`\n]+)`(?!`)/
 
   attr_reader :source, :pages, :current_page
   attr_writer :current_page
@@ -72,33 +74,71 @@ class Chapter
   # the typewriting effect.
   def write_page
     @skip_typewriting_effect = false
-    text = @pages[current_page]
-    return unless text
+    segments = tokenize_page
+    return if segments.empty?
 
-    style = DEFAULT
-    i = 0
-    while i < text.length
-      # At each line start, pick speaker style or fall back to default.
-      if i.zero? || text[i - 1] == "\n"
-        style = text.match(SPEAKER_LINE, i) ? SPEAKER : DEFAULT
-      end
+    segments.each do |style, text|
+      text.each_char do |char|
+        print(char == "\n" ? char : style.render(char))
+        $stdout.flush
 
-      char = text[i]
-      print(char == "\n" ? char : style.render(char))
-      $stdout.flush
-      i += 1
+        next if @skip_typewriting_effect
 
-      next if @skip_typewriting_effect
-
-      if stdin_ready?(TYPEWRITER_DELAY)
-        @skip_typewriting_effect = true
-        drain_stdin # discard any keypress input
+        if stdin_ready?(TYPEWRITER_DELAY)
+          @skip_typewriting_effect = true
+          drain_stdin # discard any keypress input
+        end
       end
     end
     puts
   end
 
+  def tokenize_page
+    text = @pages[current_page]
+    return [] unless text
+
+    segments = []
+    current_style = DEFAULT_STYLE
+    segment_style = DEFAULT_STYLE
+    style_until = nil
+    buffer = +""
+    i = 0
+
+    close_segment = -> {
+      segments << [segment_style, buffer.dup] unless buffer.empty?
+      buffer.clear
+    }
+
+    while i < text.length
+      current_style, style_until = style_at(text, i, current_style, style_until)
+
+      if current_style != segment_style
+        close_segment.call
+        segment_style = current_style
+      end
+
+      buffer << text[i]
+      i += 1
+    end
+
+    close_segment.call
+    segments
+  end
+
   private
+
+  # Resolve style for index +i+. Returns [style, style_until].
+  def style_at(text, i, current_style, style_until)
+    style = (style_until == i) ? DEFAULT_STYLE : current_style
+
+    if (i.zero? || text[i - 1] == "\n") && (m = text.match(SPEAKER_LINE, i))
+      [SPEAKER_STYLE, i + m[0].length]
+    elsif m = text.match(INLINE_CODE, i)
+      [CODE_STYLE, i + m[0].length]
+    else
+      [style, style_until]
+    end
+  end
 
   # True if the user typed something within +timeout+ seconds.
   # IO.select watches file descriptors until timeout;
@@ -131,6 +171,8 @@ def visit(node)
     end
   when Prism::LocalVariableReadNode
     puts "Local variable read: #{node.name}"
+  when Prism::SelfNode
+    puts "Self node"
   when Prism::CallNode
     # Calling a method may be allowed, so we need to check what it is
     puts "Call node: #{node.name}, allowed: #{ALLOWED_MESSAGES.include?(node.name)}"
@@ -152,9 +194,7 @@ begin
 rescue
 end
 
-def repl_loop
-  area = Area.new("Outer Dump")
-
+def repl_loop(area)
   Reline.completion_proc = proc { |word|
     %w{
       help
@@ -187,6 +227,7 @@ def repl_loop
 end
 
 def prologue_loop
+  return true if GAME_STATE[:prologue_completed]
   chapters = [Chapter.new("prologue/office.md"), Chapter.new("prologue/crossing.md")]
   chapter = chapters.first
 
@@ -232,6 +273,7 @@ end
 
 
 def vignette_loop
+  return true if GAME_STATE[:vignette_completed]
   print "\e[2J\e[H" # clear and move to top left
   vignette = Chapter.new("prologue/vignette.md")
   $stdin.noecho { vignette.write_page }
@@ -241,12 +283,15 @@ end
 
 # Main loop
 begin
-  prologue_loop unless GAME_STATE[:prologue_completed]
+  #prologue_loop unless GAME_STATE[:prologue_completed]
   GAME_STATE[:prologue_completed] = true
-  vignette_loop unless GAME_STATE[:vignette_completed]
+  #vignette_loop unless GAME_STATE[:vignette_completed]
   GAME_STATE[:vignette_completed] = true
 
-  repl_loop
+  outer_dump = Chapter.new("areas/outer_dump.md")
+  $stdin.noecho { outer_dump.write_page }
+  area = Area.new("Outer Dump")
+  repl_loop(area)
 rescue Interrupt
   puts '^C'
   retry

@@ -6,7 +6,7 @@ Before today, the Zone was abstract, a place apart.
 
 Even though it shaped the world since the Visitation.
 
-Even though it shaped your career.
+Even though it shaped your career, your life.
 
 Every paper.
 Every myth.
